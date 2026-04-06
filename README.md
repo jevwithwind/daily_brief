@@ -1,146 +1,175 @@
-# Daily Brief - Global Finance & Japan Industry Newsletter
+# Daily Brief — Personalized Finance Newsletter
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![OpenAI](https://img.shields.io/badge/OpenAI-Compatible-green.svg)](https://platform.openai.com/)
+AI-powered daily newsletter that collects, filters, and summarizes financial news from RSS feeds and Google News, then delivers a professional HTML newsletter via email.
 
-A Python project that collects finance news from configurable RSS and Google News sources, filters by relevance using keyword matching and LLM scoring, summarizes with an LLM, compiles into a professional business newsletter HTML email, and sends via Resend.
+Currently configured as a pilot tracking **Japan Interest Rate / BOJ monetary policy** news in both English and Japanese.
 
-## ✨ Features
-
-- **Multi-source collection**: RSS feeds, Google News, and PR Times Japan
-- **Intelligent filtering**: Time-based, keyword matching, deduplication, and LLM relevance scoring
-- **AI-powered summarization**: Individual article summaries and executive summaries per topic
-- **Professional HTML newsletter**: Clean, responsive email template
-- **Configurable topics**: Easy-to-modify YAML configuration
-- **Multi-language support**: English and Japanese content handling
-- **Fallback mechanisms**: Broaden search when insufficient articles found
-- **Error handling**: Graceful degradation when services fail
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Python 3.8+
-- API keys for DashScope and Resend
-
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/daily-brief.git
-   cd daily-brief
-   ```
-
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Copy the example environment file:
-   ```bash
-   cp .env.example .env
-   ```
-
-5. Update the `.env` file with your API keys and email:
-   ```bash
-   DASHSCOPE_API_KEY=your_dashscope_api_key_here
-   RESEND_API_KEY=your_resend_api_key_here
-   USER_EMAIL=your_email@example.com
-   ```
-
-6. Update the configuration file in `config/user_likaiwen.yaml` as needed
-
-### Usage
-
-- Run the full newsletter: `python main.py`
-- Dry run (save to output folder): `python main.py --dry-run`
-- Run single topic: `python main.py --topic "US Federal Reserve"`
-- Run single category: `python main.py --category "Equity Markets & Crises"`
-
-## 🏗️ Architecture Overview
+## How It Works
 
 ```mermaid
 graph TD
-    A[User Config] --> B[Main Orchestrator]
-    B --> C[Collectors]
-    C --> D[RSS Collector]
-    C --> E[Google News Collector]
-    C --> F[PR Times Collector]
-    
-    B --> G[Filter Pipeline]
-    G --> H[Time Filter]
-    G --> I[Keyword Filter]
-    G --> J[Deduplication]
-    G --> K[LLM Relevance Filter]
-    
-    B --> L[Summarizer]
-    L --> M[LLM Client]
-    
-    B --> N[Formatter]
-    N --> O[HTML Template]
-    
-    B --> P[Email Sender]
-    
-    D --> Q[Articles]
-    E --> Q
-    F --> Q
-    
-    Q --> H
-    H --> I
-    I --> J
-    J --> K
-    K --> L
-    L --> N
-    N --> P
+    A[RSS Feeds + Google News] --> B[Time Filter 48h]
+    B --> C[Keyword Filter]
+    C --> D[LLM Relevance Scoring]
+    D --> E[Summarization]
+    E --> F[HTML Newsletter]
+    F --> G[Email Delivery]
+    G --> H[Success]
+    G --> I[Local Save Fallback]
 ```
 
-## 🧠 Model Selection Rationale
+- Collectors fetch from RSS and Google News RSS
+- Time filter discards articles older than 48 hours (configurable via --hours flag)
+- Keyword filter matches article title + summary against topic keywords
+- LLM relevance scoring (qwen3-coder-plus via DashScope) rates each article 0-10
+- Summarization (kimi-k2.5 via DashScope) generates per-article and executive summaries
+- Formatter renders a Jinja2 HTML template
+- Delivery sends via Resend (falls back to local HTML save on failure)
 
-- **Relevance scoring model**: `qwen3-coder-plus` - Used for high-volume, structured relevance scoring with JSON output
-- **Summarization model**: `kimi-k2.5` - Used for higher quality writing for per-article and executive summaries
-- **API compatibility**: OpenAI-compatible via Alibaba DashScope
+## Project Structure
 
-## ⚙️ Configuration
+```
+daily_brief/
+├── config/                    # Configuration files
+│   └── user_likaiwen.yaml     # Topic, category, and source configuration
+├── collectors/               # Data collection modules
+│   ├── base.py               # Base collector interface
+│   ├── rss_collector.py      # RSS/Atom feed collector
+│   ├── google_news_collector.py # Google News collector
+│   └── prtimes_collector.py  # PR Times collector
+├── filters/                  # Article filtering modules
+│   ├── time_filter.py        # Time-based filtering
+│   ├── keyword_filter.py     # Keyword matching filter
+│   ├── dedup.py              # Duplicate removal
+│   └── llm_relevance.py      # LLM-based relevance scoring
+├── summarizer/               # Content summarization
+│   └── summarizer.py         # Article and topic summarization
+├── formatter/                # Newsletter formatting
+│   └── newsletter.py         # HTML template renderer
+├── templates/                # HTML templates
+│   └── newsletter.html       # Main newsletter template
+├── delivery/                 # Email delivery
+│   └── email_sender.py       # Resend integration
+├── utils/                    # Utility functions
+│   └── llm_client.py         # LLM API client
+├── models.py                 # Data models (Article, TopicConfig, etc.)
+├── main.py                   # Main orchestrator
+├── requirements.txt          # Python dependencies
+├── .env.example             # Environment variable template
+├── .gitignore               # Git ignore rules
+├── LICENSE                  # MIT License
+├── README.md                # This file
+└── output/                  # Generated newsletters (local backup)
+```
 
-The system is configured via `config/user_likaiwen.yaml`. The configuration includes:
+## Setup
 
-- **Categories**: Top-level groupings (e.g., "Macro-Economic Policy & Central Banks")
-- **Topics**: Specific subjects within categories (e.g., "US Federal Reserve")
-- **Sources**: RSS feeds, Google News queries, or PR Times company keywords
-- **Keywords**: Terms to match for relevance
-- **Thresholds**: Minimum relevance scores for inclusion
+### Prerequisites
+- Python 3.10+
+- Alibaba DashScope API key (coding plan — supports qwen3-coder-plus and kimi-k2.5)
+- Resend API key
 
-## 🛡️ Error Handling
+### Installation
+1. Clone the repo
+2. `pip install -r requirements.txt`
+3. Copy `.env.example` to `.env` and fill in your keys
+4. Edit `config/user_likaiwen.yaml` to set your preferences
 
-- Source fetch failure: Logs warning, continues with remaining sources
-- LLM call failure: Falls back to keyword-only filtering (skips relevance scoring)
-- Resend failure: Saves newsletter HTML to `output/` directory as fallback
-- All errors logged to `logs/daily_brief.log` with rotation
+### Quick Start
+```bash
+python main.py --dry-run        # preview newsletter locally
+python main.py                  # send newsletter via email
+python main.py --hours 72       # extend lookback window
+```
 
-## 🚧 Roadmap
+## Configuration Guide
 
-- **Phase 2**: Authenticated full-text scraping for Nikkei and Financial Times
-- **Phase 3**: Multi-user support with personalized configurations
-- **Phase 4**: Advanced analytics and recommendation engine
-- **Phase 5**: Mobile app for iOS and Android
+### User Config (config/user_likaiwen.yaml)
+The YAML configuration defines categories containing topics, each with sources and keywords:
+- Categories: Top-level groupings (e.g., "Japan Monetary Policy")
+- Topics: Specific subjects within categories (e.g., "Japan Interest Rate")
+- Sources: RSS feeds and Google News queries to collect from
+- Keywords: Terms to match for relevance (strict) and broad terms (require 2+ matches)
+- Thresholds: Minimum relevance scores for inclusion
 
-## 🤝 Contributing
+### Adding a New Topic
+Step-by-step:
+1. Add a new topic block under the appropriate category
+2. Define keywords (strict terms that uniquely identify the topic)
+3. Add keywords_broad if needed (common terms that need 2+ matches)
+4. Add sources (RSS feeds and/or Google News queries)
+5. Set llm_relevance_threshold (start at 5, raise if too noisy, lower if too quiet)
+6. Test with: `python main.py --dry-run --topic "Your Topic Name"`
 
-We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get started.
+### Adding a New RSS Feed
+1. Verify the feed URL returns valid XML: `curl -s "URL" | head -20`
+2. Add to the topic's sources list in the YAML
+3. Test with a dry run
 
-## 📜 License
+### Adding Email Recipients
+Currently single-user. To add recipients:
+1. The USER_EMAIL env var supports one address
+2. To send to multiple addresses, modify delivery/email_sender.py to accept a list
+3. For multi-user with different topic preferences, create additional YAML configs
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Scaling to Multiple Topics
+The pilot runs 1 topic with 4 sources. The architecture supports many more:
+- The original design included 12 topics across 5 categories
+- Each topic adds ~100-300 LLM tokens for relevance scoring per article
+- A 12-topic config with ~50 articles each costs roughly 200-300K tokens per run
+- Add topics incrementally and test each one before going live
 
-## 🙏 Acknowledgments
+## Setting Up Daily Automation (macOS)
 
-- Thanks to Alibaba DashScope for the LLM APIs
-- Thanks to Resend for the email delivery service
-- Thanks to the open-source community for the libraries used in this project
+### Option A: Calendar Reminder + Shell Script
+1. Create run.sh in the project root:
+   ```bash
+   #!/bin/bash
+   cd /path/to/daily_brief
+   /usr/bin/python3 main.py >> logs/cron.log 2>&1
+   ```
+2. `chmod +x run.sh`
+3. Open macOS Calendar, create a daily recurring event at your desired time
+4. In the event's Alert settings, choose "Open file" and select run.sh
+5. The newsletter will be generated and emailed at that time each day
+
+### Option B: launchd (more reliable)
+1. Create a plist file at ~/Library/LaunchAgents/com.dailybrief.plist
+2. ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+       <key>Label</key>
+       <string>com.dailybrief</string>
+       <key>ProgramArguments</key>
+       <array>
+           <string>/usr/bin/python3</string>
+           <string>/path/to/daily_brief/main.py</string>
+       </array>
+       <key>StartCalendarInterval</key>
+       <dict>
+           <key>Hour</key>
+           <integer>8</integer>
+           <key>Minute</key>
+           <integer>0</integer>
+       </dict>
+       <key>StandardOutPath</key>
+       <string>/path/to/daily_brief/logs/daily_brief.log</string>
+       <key>StandardErrorPath</key>
+       <string>/path/to/daily_brief/logs/daily_brief_error.log</string>
+   </dict>
+   </plist>
+   ```
+3. Load with: `launchctl load ~/Library/LaunchAgents/com.dailybrief.plist`
+4. This runs even without Calendar.app open
+
+## Roadmap
+- [ ] Phase 2: Authenticated scraping for Nikkei and Financial Times full-text access
+- [ ] Multi-user support with per-user YAML configs
+- [ ] Weekly digest mode (aggregate week's top stories)
+- [ ] --since flag to override lookback window for catching up after weekends
+- [ ] Web dashboard to preview and manage newsletter settings
+
+## License
+MIT

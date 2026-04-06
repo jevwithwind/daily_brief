@@ -28,8 +28,12 @@ class EmailSender:
             subject = f"Daily Brief - Global Finance & Japan Industry Newsletter - {datetime.now().strftime('%Y-%m-%d')}"
         
         try:
+            # Get sender email from environment variable, default to onboarding@resend.dev
+            from_email = os.getenv("FROM_EMAIL", "onboarding@resend.dev")
+            sender_name = "Daily Brief"
+            
             params = {
-                "from": "Daily Brief <brief@yourdomain.com>",  # Replace with verified domain
+                "from": f"{sender_name} <{from_email}>",
                 "to": [recipient_email],
                 "subject": subject,
                 "html": html_content,
