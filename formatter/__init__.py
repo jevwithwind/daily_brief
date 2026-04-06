@@ -1,0 +1,1 @@
+"""Formatter package for the Daily Brief project."""

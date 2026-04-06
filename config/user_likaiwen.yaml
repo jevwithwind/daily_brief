@@ -1,0 +1,27 @@
+user:
+  name: "Kevin"
+  email: "FILL_IN"
+
+categories:
+  - name: "Japan Monetary Policy"
+    language: "en"
+    topics:
+      - name: "Japan Interest Rate"
+        tags: ["BOJ", "Interest_Rate", "Japan"]
+        keywords: ["BOJ", "Bank of Japan", "日銀", "interest rate", "金利", "Ueda", "植田", "yield curve", "YCC", "monetary policy", "金融政策", "利上げ", "利下げ", "マイナス金利", "rate hike", "rate hold", "rate cut", "policy meeting", "policy rate", "tightening", "easing", "normalization", "金融緩和", "金融引き締め", "政策金利", "据え置き", "国債", "bond buying", "Japanese government bond", "JGB", "yen interest"]
+        keywords_broad: []
+        sources:
+          - type: rss
+            url: "https://asia.nikkei.com/rss/feed/nar"
+            name: "Nikkei Asia"
+          - type: rss
+            url: "https://news.yahoo.co.jp/rss/topics/business.xml"
+            name: "Yahoo News Japan"
+          - type: google_news
+            query: "BOJ interest rate OR Bank of Japan monetary policy"
+            name: "Google News BOJ EN"
+          - type: google_news
+            query: "日銀 金利 政策"
+            name: "Google News BOJ JA"
+        llm_relevance_threshold: 5
+        min_keyword_matches: 1

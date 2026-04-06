@@ -1,0 +1,460 @@
+================================================================================
+DAILY BRIEF DIAGNOSTIC REPORT
+================================================================================
+
+PART 1: KEYWORD FILTER CODE
+--------------------------------------------------
+from typing import List
+from models import Article, TopicConfig
+
+
+def filter_by_keywords(articles: List[Article], topic_config: TopicConfig) -> List[Article]:
+    """
+    Filter articles based on two-tier keyword matching.
+    An article passes if:
+    - Any strict keyword matches (topic_config.keywords), OR
+    - At least 2 broad keywords match (topic_config.keywords_broad)
+    """
+    strict_keywords = topic_config.keywords
+    broad_keywords = getattr(topic_config, 'keywords_broad', []) or []
+    filtered_articles = []
+    
+    for article in articles:
+        # Convert article text to lowercase for comparison
+        article_text = f"{article.title} {article.summary}".lower()
+        
+        # Check for strict keyword matches (any match passes)
+        strict_match = any(keyword.lower() in article_text for keyword in strict_keywords)
+        
+        # Check for broad keyword matches (need at least 2)
+        broad_match_count = sum(1 for keyword in broad_keywords if keyword.lower() in article_text)
+        broad_match = broad_match_count >= 2
+        
+        # Include article if either condition is met
+        if strict_match or broad_match:
+            filtered_articles.append(article)
+    
+    return filtered_articles
+
+PART 2: LLM RELEVANCE SCORING CODE
+--------------------------------------------------
+from typing import List, Optional
+from models import Article, TopicConfig
+from utils.llm_client import LLMClient
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def filter_by_llm_relevance(articles: List[Article], topic_config: TopicConfig, llm_client: LLMClient) -> List[Article]:
+    """
+    Filter articles based on LLM relevance scoring.
+    Each article gets a relevance score from the LLM, and only articles above the threshold are returned.
+    If LLM call fails, fall back to keyword-only filtering (return all articles).
+    """
+    filtered_articles = []
+    
+    for article in articles:
+        try:
+            # Get relevance score from LLM
+            result = llm_client.get_relevance_score(
+                article_title=article.title,
+                article_summary=article.summary,
+                topic_keywords=", ".join(topic_config.keywords),
+                language=topic_config.language
+            )
+            
+            if result and 'score' in result:
+                article.relevance_score = result['score']
+                article.relevance_reason = result.get('reason', '')
+                
+                # Only include articles that meet the threshold
+                if result['score'] >= topic_config.llm_relevance_threshold:
+                    filtered_articles.append(article)
+                else:
+                    logger.debug(f"Article '{article.title}' scored {result['score']} (threshold: {topic_config.llm_relevance_threshold}), excluding")
+            else:
+                logger.warning(f"Failed to get relevance score for article: {article.title}")
+                # If LLM call fails, fall back to including the article (keyword-only filtering)
+                # This ensures we still get content even if LLM is unavailable
+                filtered_articles.append(article)
+                
+        except Exception as e:
+            logger.error(f"Error processing LLM relevance for article '{article.title}': {str(e)}")
+            # If LLM call fails, fall back to including the article (keyword-only filtering)
+            filtered_articles.append(article)
+    
+    return filtered_articles
+
+PART 3: SAMPLE ARTICLES THAT FAILED KEYWORD FILTER
+--------------------------------------------------
+
+Analyzing topic: Japan Market Revival
+============================================================
+Articles after time filter (48 hours): 51
+Articles that failed keyword filter: 50
+
+  Article 1:
+    Title: ZEALS社長「26年は音声AI元年」　ドラえもんを作りたかった少年が叶える未来 (Views)
+    Summary: ドラえもんのように、ロボットが人と会話し共生する世界が実現しつつある。音声AIエージェントやロボットなどを開発する新興のZEALS（東京・目黒）の清水正大CEOは、「2026年は日本にとって『音声AI元年』になる」と展望する。
+    Source: Nikkei Business Extended
+    Strict keywords tested: ['Nikkei 225', 'TOPIX', '日経平均', '東証']
+    Broad keywords tested: ['Japan', 'stock', 'market', 'investor', 'rally', 'reform', 'governance', 'shareholder', 'inflow', '買い越し', '株']
+    Strict matches: []
+    Broad matches: [] (0/2 needed)
+
+  Article 2:
+    Title: Global plastic recycling stalls at under 10%
+    Summary: 
+    Source: Nikkei Asia
+    Strict keywords tested: ['Nikkei 225', 'TOPIX', '日経平均', '東証']
+    Broad keywords tested: ['Japan', 'stock', 'market', 'investor', 'rally', 'reform', 'governance', 'shareholder', 'inflow', '買い越し', '株']
+    Strict matches: []
+    Broad matches: [] (0/2 needed)
+
+  Article 3:
+    Title: Toyota's Made in Japan plan might need foreign laborers to make 1 of 4 cars
+    Summary: 
+    Source: Nikkei Asia
+    Strict keywords tested: ['Nikkei 225', 'TOPIX', '日経平均', '東証']
+    Broad keywords tested: ['Japan', 'stock', 'market', 'investor', 'rally', 'reform', 'governance', 'shareholder', 'inflow', '買い越し', '株']
+    Strict matches: []
+    Broad matches: ['Japan'] (1/2 needed)
+
+  Article 4:
+    Title: Instant delivery is changing how Chinese shop
+    Summary: 
+    Source: Nikkei Asia
+    Strict keywords tested: ['Nikkei 225', 'TOPIX', '日経平均', '東証']
+    Broad keywords tested: ['Japan', 'stock', 'market', 'investor', 'rally', 'reform', 'governance', 'shareholder', 'inflow', '買い越し', '株']
+    Strict matches: []
+    Broad matches: [] (0/2 needed)
+
+  Article 5:
+    Title: Japan miso maker's 'cultured umami essence' to hit US stores in summer
+    Summary: 
+    Source: Nikkei Asia
+    Strict keywords tested: ['Nikkei 225', 'TOPIX', '日経平均', '東証']
+    Broad keywords tested: ['Japan', 'stock', 'market', 'investor', 'rally', 'reform', 'governance', 'shareholder', 'inflow', '買い越し', '株']
+    Strict matches: []
+    Broad matches: ['Japan'] (1/2 needed)
+
+Analyzing topic: US-Japan Economic Ties
+============================================================
+Articles after time filter (48 hours): 50
+Articles that failed keyword filter: 49
+
+  Article 1:
+    Title: Global plastic recycling stalls at under 10%
+    Summary: 
+    Source: Nikkei Asia
+    Strict keywords tested: ['Nippon Steel', 'US Japan', 'U.S. Japan', '日米']
+    Broad keywords tested: ['Japan', 'trade', 'investment', 'acquisition', 'bilateral', 'alliance', 'tariff', 'Washington', 'Tokyo']
+    Strict matches: []
+    Broad matches: [] (0/2 needed)
+
+  Article 2:
+    Title: Toyota's Made in Japan plan might need foreign laborers to make 1 of 4 cars
+    Summary: 
+    Source: Nikkei Asia
+    Strict keywords tested: ['Nippon Steel', 'US Japan', 'U.S. Japan', '日米']
+    Broad keywords tested: ['Japan', 'trade', 'investment', 'acquisition', 'bilateral', 'alliance', 'tariff', 'Washington', 'Tokyo']
+    Strict matches: []
+    Broad matches: ['Japan'] (1/2 needed)
+
+  Article 3:
+    Title: Instant delivery is changing how Chinese shop
+    Summary: 
+    Source: Nikkei Asia
+    Strict keywords tested: ['Nippon Steel', 'US Japan', 'U.S. Japan', '日米']
+    Broad keywords tested: ['Japan', 'trade', 'investment', 'acquisition', 'bilateral', 'alliance', 'tariff', 'Washington', 'Tokyo']
+    Strict matches: []
+    Broad matches: [] (0/2 needed)
+
+  Article 4:
+    Title: Japan's corporate bond issuance hits record high on retail investors
+    Summary: 
+    Source: Nikkei Asia
+    Strict keywords tested: ['Nippon Steel', 'US Japan', 'U.S. Japan', '日米']
+    Broad keywords tested: ['Japan', 'trade', 'investment', 'acquisition', 'bilateral', 'alliance', 'tariff', 'Washington', 'Tokyo']
+    Strict matches: []
+    Broad matches: ['Japan'] (1/2 needed)
+
+  Article 5:
+    Title: Japan miso maker's 'cultured umami essence' to hit US stores in summer
+    Summary: 
+    Source: Nikkei Asia
+    Strict keywords tested: ['Nippon Steel', 'US Japan', 'U.S. Japan', '日米']
+    Broad keywords tested: ['Japan', 'trade', 'investment', 'acquisition', 'bilateral', 'alliance', 'tariff', 'Washington', 'Tokyo']
+    Strict matches: []
+    Broad matches: ['Japan'] (1/2 needed)
+
+Analyzing topic: US-China Trade War
+============================================================
+Articles after time filter (48 hours): 26
+Articles that failed keyword filter: 22
+
+  Article 1:
+    Title: Bipartisan Bill Seeks Tougher Curbs on Chinese Chipmaking Tools - NTD News
+    Summary: <a href="https://news.google.com/rss/articles/CBMinAFBVV95cUxOT0JyaUFqNWREUnpRTVZhNVlWRFVPcHpxYmdTRGhaTUFlMTVwSHFHSDExbDhJSzNZbEUyd2dNQ1dIUkh4S3g4bk9DUWVzbDhGN2JlVnRxTUt3bU5UcHdjWl81TnVZNG83emNOTXQxSk
+    Source: Google News US-China
+    Strict keywords tested: ['US China trade', 'US-China', 'entity list', 'decoupling']
+    Broad keywords tested: ['China', 'tariff', 'sanction', 'export', 'ban', 'restriction', 'Beijing', 'Washington', 'trade']
+    Strict matches: []
+    Broad matches: [] (0/2 needed)
+
+  Article 2:
+    Title: Chinese chip firms hit record high revenue driven by the AI boom and U.S. curbs - CNBC
+    Summary: <a href="https://news.google.com/rss/articles/CBMikAFBVV95cUxOZHhtMTlURkRvTDZaemlmTHpERlJQckhXTXFtR3g5NjFTdTNmUlBHTV9VOVpPLW1SOTlpdUR5cnl3Y1RrWWtuZlloVk14d1RZRnh5Vm5TMWFldFA5cmZsZ3ZIZ2NqaVVpemtOaEhHdD
+    Source: Google News US-China
+    Strict keywords tested: ['US China trade', 'US-China', 'entity list', 'decoupling']
+    Broad keywords tested: ['China', 'tariff', 'sanction', 'export', 'ban', 'restriction', 'Beijing', 'Washington', 'trade']
+    Strict matches: []
+    Broad matches: [] (0/2 needed)
+
+  Article 3:
+    Title: Chinese Chip Makers Hit Record Revenue on AI Boom, US Curbs - The Tech Buzz
+    Summary: <a href="https://news.google.com/rss/articles/CBMilgFBVV95cUxOVDJjQlRpYnItUDNtYnhuSXI1UThUdktpLUlmT21YRkpEVUk0Unh0dm9zR1ZhR3RYY21QS2lIcEpIRzdFbXhaNVJIOVg3c0tUUEFVNmhKY2VWdHluSENLdnR6WWdoU19vT0NxbEdwT1
+    Source: Google News US-China
+    Strict keywords tested: ['US China trade', 'US-China', 'entity list', 'decoupling']
+    Broad keywords tested: ['China', 'tariff', 'sanction', 'export', 'ban', 'restriction', 'Beijing', 'Washington', 'trade']
+    Strict matches: []
+    Broad matches: [] (0/2 needed)
+
+  Article 4:
+    Title: ASML (ASML) Stock; Slips as US Moves to Tighten China Chip Controls - CoinCentral
+    Summary: <a href="https://news.google.com/rss/articles/CBMif0FVX3lxTE5mWnhxTlpIR05wTDFEalNMOGlUa09ud21yMUlTXzFULXJ0Rnd0MTVzdmF6OGRhbGVfbUlYZkwxYTJyUVBTRHpmb2VmdUZFT29Mb2Y0UVNwYnVad1VnZVlFbXk1azFDSzFnSFBYcElSUF
+    Source: Google News US-China
+    Strict keywords tested: ['US China trade', 'US-China', 'entity list', 'decoupling']
+    Broad keywords tested: ['China', 'tariff', 'sanction', 'export', 'ban', 'restriction', 'Beijing', 'Washington', 'trade']
+    Strict matches: []
+    Broad matches: ['China'] (1/2 needed)
+
+  Article 5:
+    Title: Trump warns Iran '48 hours before all Hell will reign down,' while search for missing crew member intensifies
+    Summary: The U.S. military continued to search for a missing American airman on Saturday after an F-15E fighter jet was shot down over southwestern Iran.
+    Source: CNBC World
+    Strict keywords tested: ['US China trade', 'US-China', 'entity list', 'decoupling']
+    Broad keywords tested: ['China', 'tariff', 'sanction', 'export', 'ban', 'restriction', 'Beijing', 'Washington', 'trade']
+    Strict matches: []
+    Broad matches: [] (0/2 needed)
+
+PART 5: CURRENT CONFIG FILE
+--------------------------------------------------
+user:
+  name: "Kevin"
+  email: "FILL_IN"
+
+categories:
+  - name: "Macro-Economic Policy & Central Banks"
+    language: "en"
+    topics:
+      - name: "US Federal Reserve"
+        tags: ["US_Macro", "Monetary_Policy", "Inflation"]
+        keywords: ["Federal Reserve", "Fed", "FOMC", "Jerome Powell", "interest rate", "inflation", "CPI", "rate cut", "rate hike"]
+        min_keyword_matches: 1
+        sources:
+          - type: rss
+            url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258"
+            name: "CNBC Economy"
+          - type: rss
+            url: "https://www.ft.com/rss/home"
+            name: "Financial Times"
+          - type: google_news
+            query: "Federal Reserve interest rate OR FOMC OR inflation"
+            name: "Google News Fed"
+        llm_relevance_threshold: 6
+
+      - name: "Bank of Japan (BOJ)"
+        tags: ["JP_Macro", "Monetary_Policy", "BOJ"]
+        keywords: ["Bank of Japan", "BOJ", "Kazuo Ueda", "interest rate", "yield curve control", "YCC", "normalization", "bond buying", "日銀", "植田和男"]
+        min_keyword_matches: 1
+        sources:
+          - type: rss
+            url: "https://business.nikkei.com/rss/sns/nb.rdf"
+            name: "Nikkei Business"
+          - type: rss
+            url: "https://asia.nikkei.com/rss/feed/nar"
+            name: "Nikkei Asia"
+          - type: rss
+            url: "https://news.yahoo.co.jp/rss/topics/business.xml"
+            name: "Yahoo News Japan"
+          - type: google_news
+            query: "Bank of Japan interest rate OR BOJ policy OR yield curve control"
+            name: "Google News BOJ EN"
+          - type: google_news
+            query: "日銀 金利 政策 植田"
+            name: "Google News BOJ JA"
+        llm_relevance_threshold: 5
+
+      - name: "People's Bank of China (PBOC)"
+        tags: ["CN_Macro", "Monetary_Policy", "Stimulus"]
+        keywords: ["PBOC", "People's Bank of China", "Pan Gongsheng", "央行"]
+        keywords_broad: ["China", "rate", "stimulus", "reserve", "lending", "monetary", "liquidity", "easing"]
+        min_keyword_matches: 1
+        sources:
+          - type: google_news
+            query: "PBOC interest rate OR loan prime rate OR China stimulus"
+            name: "Google News PBOC"
+          - type: rss
+            url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664"
+            name: "CNBC Finance"
+        llm_relevance_threshold: 6
+
+  - name: "Foreign Exchange & Currency"
+    language: "en"
+    topics:
+      - name: "Yen Volatility"
+        tags: ["FX", "JPY", "Currency_Intervention"]
+        keywords: ["Yen", "JPY", "USD/JPY", "intervention", "Ministry of Finance", "MoF", "currency manipulation", "depreciation"]
+        min_keyword_matches: 1
+        sources:
+          - type: google_news
+            query: "Yen USD/JPY intervention OR depreciation"
+            name: "Google News Yen"
+          - type: rss
+            url: "https://www.ft.com/rss/home"
+            name: "Financial Times"
+        llm_relevance_threshold: 6
+
+      - name: "Yuan/Renminbi"
+        tags: ["FX", "CNY", "Capital_Flows"]
+        keywords: ["CNY", "CNH", "USD/CNY", "renminbi", "人民元"]
+        keywords_broad: ["yuan", "currency", "fixing", "capital", "offshore", "devaluation", "peg"]
+        min_keyword_matches: 1
+        sources:
+          - type: google_news
+            query: "Yuan CNY fixing rate OR capital flows OR offshore renminbi"
+            name: "Google News Yuan"
+        llm_relevance_threshold: 6
+
+      - name: "US Dollar Strength"
+        tags: ["FX", "USD", "Yields"]
+        keywords: ["US Dollar", "USD", "DXY", "Dollar Index", "safe haven", "treasury yields", "global reserve"]
+        min_keyword_matches: 1
+        sources:
+          - type: google_news
+            query: "US Dollar DXY strength OR treasury yields"
+            name: "Google News USD"
+          - type: rss
+            url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664"
+            name: "CNBC Finance"
+        llm_relevance_threshold: 6
+
+  - name: "Trade, Tariffs & Geoeconomics"
+    language: "en"
+    topics:
+      - name: "US-China Trade War"
+        tags: ["Geopolitics", "Trade_War", "US_CN"]
+        keywords: ["US China trade", "US-China", "entity list", "decoupling"]
+        keywords_broad: ["China", "tariff", "sanction", "export", "ban", "restriction", "Beijing", "Washington", "trade"]
+        min_keyword_matches: 1
+        sources:
+          - type: google_news
+            query: "US China tariffs OR export controls OR sanctions OR decoupling"
+            name: "Google News US-China"
+          - type: rss
+            url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100727362"
+            name: "CNBC World"
+        llm_relevance_threshold: 6
+
+      - name: "Semiconductor Supply Chain"
+        tags: ["Tech_Finance", "Supply_Chain", "Chips"]
+        keywords: ["TSMC", "Nvidia", "CHIPS Act", "半導体"]
+        keywords_broad: ["semiconductor", "chip", "fab", "export", "restriction", "AI hardware", "supply chain"]
+        min_keyword_matches: 1
+        sources:
+          - type: google_news
+            query: "semiconductor TSMC Nvidia export ban OR CHIPS Act"
+            name: "Google News Chips"
+        llm_relevance_threshold: 6
+
+      - name: "US-Japan Economic Ties"
+        tags: ["Bilateral_Trade", "US_JP", "FDI"]
+        keywords: ["Nippon Steel", "US Japan", "U.S. Japan", "日米"]
+        keywords_broad: ["Japan", "trade", "investment", "acquisition", "bilateral", "alliance", "tariff", "Washington", "Tokyo"]
+        min_keyword_matches: 1
+        sources:
+          - type: rss
+            url: "https://asia.nikkei.com/rss/feed/nar"
+            name: "Nikkei Asia"
+          - type: google_news
+            query: "US Japan FDI OR trade OR Nippon Steel"
+            name: "Google News US-JP"
+        llm_relevance_threshold: 6
+
+  - name: "Equity Markets & Crises"
+    language: "en"
+    topics:
+      - name: "Wall Street Indices"
+        tags: ["Equities", "US_Markets", "Tech_Sector"]
+        keywords: ["S&P 500", "NASDAQ", "Dow Jones", "earnings", "tech rally", "market correction", "Magnificent Seven"]
+        min_keyword_matches: 1
+        sources:
+          - type: rss
+            url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069"
+            name: "CNBC Stock Market"
+          - type: rss
+            url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839135"
+            name: "CNBC Earnings"
+          - type: google_news
+            query: "S&P 500 OR NASDAQ earnings OR market correction"
+            name: "Google News Wall St"
+          - type: google_news
+            query: "M&A OR acquisition OR private equity deal"
+            name: "Google News Deals"
+        llm_relevance_threshold: 5
+
+      - name: "Japan Market Revival"
+        tags: ["Equities", "JP_Markets", "Corporate_Reform"]
+        keywords: ["Nikkei 225", "TOPIX", "日経平均", "東証"]
+        keywords_broad: ["Japan", "stock", "market", "investor", "rally", "reform", "governance", "shareholder", "inflow", "買い越し", "株"]
+        min_keyword_matches: 1
+        sources:
+          - type: rss
+            url: "https://business.nikkei.com/rss/sns/nb-x.rdf"
+            name: "Nikkei Business Extended"
+          - type: rss
+            url: "https://asia.nikkei.com/rss/feed/nar"
+            name: "Nikkei Asia"
+          - type: google_news
+            query: "Nikkei 225 TOPIX corporate governance OR foreign inflows"
+            name: "Google News Nikkei"
+        llm_relevance_threshold: 5
+
+      - name: "China Real Estate & Growth"
+        tags: ["CN_Economy", "Real_Estate", "Debt_Crisis"]
+        keywords: ["Evergrande", "Country Garden", "恒大", "碧桂園"]
+        keywords_broad: ["China", "property", "real estate", "housing", "debt", "developer", "GDP", "growth"]
+        min_keyword_matches: 1
+        sources:
+          - type: google_news
+            query: "China real estate crisis OR property OR GDP growth OR local government debt"
+            name: "Google News China RE"
+        llm_relevance_threshold: 6
+
+  - name: "エレベーター・建設業界（日本）"
+    language: "ja"
+    topics:
+      - name: "エレベーター業界"
+        tags: ["JP_Elevator", "Industry"]
+        keywords: ["エレベーター", "昇降機", "三菱電機", "日立ビルシステム", "フジテック", "東芝エレベータ", "オーチス"]
+        fallback_broaden: true
+        fallback_keywords: ["建設", "ゼネコン", "大林組", "鹿島建設", "清水建設", "大成建設", "竹中工務店"]
+        min_articles_before_fallback: 2
+        skip_if_no_relevant: true
+        min_keyword_matches: 1
+        sources:
+          - type: google_news
+            query: "エレベーター 業界 日本"
+            name: "Google News エレベーター"
+          - type: google_news
+            query: "昇降機 メーカー"
+            name: "Google News 昇降機"
+          - type: prtimes
+            company_keywords: ["三菱電機", "日立ビルシステム", "フジテック", "東芝エレベータ"]
+            name: "PR Times エレベーター"
+          - type: google_news
+            query: "建設 日本 ゼネコン"
+            name: "Google News 建設"
+        llm_relevance_threshold: 5

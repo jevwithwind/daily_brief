@@ -1,0 +1,1 @@
+"""Collectors package for the Daily Brief project."""
